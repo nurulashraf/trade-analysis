@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# --- optional extras ---
+# yfinance>=0.2.40        # real market data (DATA_PROVIDER=yfinance)
+# moomoo-api>=9.0         # live trading via moomoo OpenD (see README warnings)
+
+# --- dev ---
+pytest>=8.0
+httpx>=0.27              # for fastapi TestClient
