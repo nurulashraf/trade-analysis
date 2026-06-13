@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SAHAM PRO++ · AI Auto-Trader</title>
+<title>KONSENSUS · AI Auto-Trader</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header id="topbar">
   <div class="brand">
-    <div class="brand-sub">PENDAKWAH TEKNOLOGI</div>
-    <div class="brand-name">SAHAM<span>PRO++</span></div>
+    <div class="brand-name">KONSEN<span>SUS</span></div>
   </div>
   <div class="topbar-quote">
     <span id="top-symbol">—</span>
@@ -18,7 +17,7 @@
     <span id="top-change" class="up">—</span>
   </div>
   <div class="topbar-right">
-    <span class="dot-label"><i class="dot green"></i>DATA</span>
+    <span class="dot-label"><i class="dot green"></i><span id="data-src">DATA</span></span>
     <span class="dot-label"><i class="dot blue"></i>AI</span>
     <span class="dot-label"><i class="dot blue" id="bot-dot"></i>BOT</span>
     <span id="clock">--:--:--</span>
@@ -30,7 +29,12 @@
 
 <main id="layout">
   <aside id="watchlist-pane">
-    <div class="pane-title">WATCHLIST <span class="chip gold">AI-curated</span></div>
+    <div class="pane-title">WATCHLIST</div>
+    <div id="wl-tabs">
+      <button class="wl-tab active" data-class="stocks">STOCKS</button>
+      <button class="wl-tab" data-class="commodities">COMMOD</button>
+      <button class="wl-tab" data-class="forex">FX</button>
+    </div>
     <div id="watchlist"></div>
   </aside>
 
@@ -51,15 +55,15 @@
   <aside id="right-pane">
     <div class="card trader-card">
       <div class="card-head">
-        <span class="card-title">▣ AI AUTO-TRADER</span>
+        <span class="card-title">AI AUTO-TRADER</span>
         <span id="bot-live" class="live-pill off">OFF</span>
       </div>
-      <button id="btn-bot" class="bot-btn start">▶ START THE BOT</button>
+      <button id="btn-bot" class="bot-btn start">START AUTO-TRADER</button>
       <p class="hint" id="brains-line">Brains loading…</p>
-      <p class="hint">Watching your watchlist and trading on its own — fake money (paper), safe to watch.</p>
+      <p class="hint">Trades the watchlist autonomously with paper money — no real funds at risk.</p>
       <div class="pl-row">
-        <div><div class="muted small">It's made you</div><div id="bot-pl" class="big-pl">+$0.0000</div></div>
-        <div class="right"><div class="muted small">holding</div><div id="holding" class="hold-line">0 stocks</div><div id="trade-count" class="muted small">0 trades</div></div>
+        <div><div class="muted small">Bot P&amp;L (paper)</div><div id="bot-pl" class="big-pl">+$0.00</div></div>
+        <div class="right"><div class="muted small">Positions</div><div id="holding" class="hold-line">0</div><div id="trade-count" class="muted small">0 trades</div></div>
       </div>
       <div id="held-symbols" class="muted small"></div>
       <p class="hint footnote">Paper money · dual-AI consensus · risk-capped · watchlist only</p>
@@ -68,6 +72,14 @@
     <div class="card">
       <div class="card-title">STATS</div>
       <div id="stats" class="stats"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">ECONOMIC CALENDAR</span>
+        <span id="cal-src" class="chip">—</span>
+      </div>
+      <div id="calendar" class="cal"></div>
     </div>
 
     <div class="card">
@@ -88,7 +100,7 @@
     <div class="badge-sub"><span class="chip">PAPER</span> <span class="chip blue" id="badge-brains">2 AI</span></div>
   </div>
   <div id="botlog">
-    <div class="log-title">▤ BOT LOG — LIVE AI DELIBERATION</div>
+    <div class="log-title">BOT LOG — LIVE AI DELIBERATION</div>
     <div id="log-lines"></div>
   </div>
   <div id="botlog-pl"><div class="muted small">BOT P/L</div><div id="footer-pl" class="big-pl">+$0.0000</div></div>
@@ -97,7 +109,7 @@
 <div id="modal" class="modal hidden">
   <div class="modal-box">
     <div class="modal-head">
-      <span>⏱ BACKTEST · <span id="bt-symbol">—</span> · ~1yr</span>
+      <span>BACKTEST · <span id="bt-symbol">—</span> · ~1yr</span>
       <button id="modal-close">✕</button>
     </div>
     <canvas id="bt-chart" width="640" height="220"></canvas>

@@ -1,4 +1,5 @@
 """App configuration. Everything has a safe default so the app runs offline."""
+# Watchlists are grouped by asset class: stocks / commodities / forex.
 from __future__ import annotations
 
 import os
@@ -9,15 +10,51 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
-# The AI-curated watchlist (mirrors the "better watchlist" idea from the post:
-# US mega-cap tech + AI supply chain + quantum + Malaysia/ASEAN + defensives).
-DEFAULT_WATCHLIST = [
-    "META", "AVGO", "TSLA", "MSFT", "AMD", "INTC", "NVDA", "AAPL",
-    "TSM", "ASML", "MRVL", "SMH", "VRT",            # AI supply chain
-    "IONQ", "QBTS", "RGTI",                          # speculative quantum
-    "5347.KL", "1023.KL",                            # Malaysia: Tenaga, CIMB
-    "LLY", "JPM", "COST", "GEV",                     # defensives / power
-]
+def _env_list(name: str) -> list[str] | None:
+    raw = os.environ.get(name, "").strip()
+    return [s.strip() for s in raw.split(",") if s.strip()] if raw else None
+
+
+def _build_watchlists() -> dict[str, list[str]]:
+    legacy = _env_list("WATCHLIST")
+    if legacy:  # flat legacy list: classify each symbol by suffix
+        out: dict[str, list[str]] = {"stocks": [], "commodities": [], "forex": []}
+        for s in legacy:
+            out[asset_class(s)].append(s)
+        return out
+    return {
+        "stocks": _env_list("WATCHLIST_STOCKS") or list(DEFAULT_WATCHLISTS["stocks"]),
+        "commodities": _env_list("WATCHLIST_COMMODITIES") or list(DEFAULT_WATCHLISTS["commodities"]),
+        "forex": _env_list("WATCHLIST_FOREX") or list(DEFAULT_WATCHLISTS["forex"]),
+    }
+
+
+# Watchlists by asset class. Symbols use Yahoo Finance conventions so the
+# yfinance provider works unchanged: futures end in "=F", forex in "=X".
+DEFAULT_WATCHLISTS = {
+    # US mega-cap tech + AI supply chain + quantum + Malaysia/ASEAN + defensives
+    "stocks": [
+        "META", "AVGO", "TSLA", "MSFT", "AMD", "INTC", "NVDA", "AAPL",
+        "TSM", "ASML", "MRVL", "SMH", "VRT",            # AI supply chain
+        "IONQ", "QBTS", "RGTI",                          # speculative quantum
+        "5347.KL", "1023.KL",                            # Malaysia: Tenaga, CIMB
+        "LLY", "JPM", "COST", "GEV",                     # defensives / power
+    ],
+    "commodities": ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F"],
+    "forex": ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDMYR=X"],
+}
+
+DEFAULT_WATCHLIST = [s for syms in DEFAULT_WATCHLISTS.values() for s in syms]
+
+
+def asset_class(symbol: str) -> str:
+    """Classify a symbol by Yahoo Finance suffix convention."""
+    if symbol.endswith("=F"):
+        return "commodities"
+    if symbol.endswith("=X"):
+        return "forex"
+    return "stocks"
+
 
 COMPANY_NAMES = {
     "META": "Meta Platforms", "AVGO": "Broadcom", "TSLA": "Tesla",
@@ -27,6 +64,13 @@ COMPANY_NAMES = {
     "QBTS": "D-Wave Quantum", "RGTI": "Rigetti", "5347.KL": "Tenaga Nasional",
     "1023.KL": "CIMB Group", "LLY": "Eli Lilly", "JPM": "JPMorgan",
     "COST": "Costco", "GEV": "GE Vernova",
+    # commodities (front-month futures)
+    "GC=F": "Gold", "SI=F": "Silver", "CL=F": "Crude Oil WTI",
+    "NG=F": "Natural Gas", "HG=F": "Copper",
+    # forex
+    "EURUSD=X": "Euro / US Dollar", "GBPUSD=X": "British Pound / US Dollar",
+    "USDJPY=X": "US Dollar / Japanese Yen", "AUDUSD=X": "Australian Dollar / US Dollar",
+    "USDMYR=X": "US Dollar / Malaysian Ringgit",
 }
 
 
@@ -34,9 +78,12 @@ COMPANY_NAMES = {
 class Settings:
     # --- data ---
     data_provider: str = os.environ.get("DATA_PROVIDER", "mock")  # mock | yfinance
+    # Per-class lists, each overridable: WATCHLIST_STOCKS / _COMMODITIES / _FOREX.
+    # Legacy WATCHLIST (flat, comma-separated) still works; symbols are
+    # auto-classified by suffix (=F commodities, =X forex, else stocks).
+    watchlists: dict[str, list[str]] = field(default_factory=lambda: _build_watchlists())
     watchlist: list[str] = field(default_factory=lambda: (
-        os.environ.get("WATCHLIST", "").split(",")
-        if os.environ.get("WATCHLIST") else list(DEFAULT_WATCHLIST)
+        [s for syms in _build_watchlists().values() for s in syms]
     ))
 
     # --- brains (the two AIs that must agree) ---

@@ -1,9 +1,12 @@
-# SAHAM PRO++ — Multi-Agent AI Trading Terminal
+# KONSENSUS
 
-A self-hosted replica (and upgrade) of the viral "AI auto-trader" concept:
-a terminal-style dashboard where **multiple AI agents research, analyse,
-debate, and paper-trade a watchlist on their own** — and only execute when
-two independent AI "brains" agree.
+**Multi-asset, multi-agent trading terminal with dual-AI consensus execution.**
+
+KONSENSUS is a self-hosted research and paper-trading platform. Independent
+AI agents analyse a multi-asset watchlist — equities, commodity futures, and
+currency pairs — and orders are simulated only when a configurable quorum of
+decision agents independently reaches the same conclusion. A dedicated risk
+layer enforces position limits, drawdown controls, and trade cooldowns.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -19,72 +22,94 @@ two independent AI "brains" agree.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick start (60 seconds, fully offline)
+## Features
 
-```bash
+- **Multi-asset coverage** — equities, commodity futures, and FX pairs in
+  separate watchlist tabs; the trading engine operates across the combined
+  universe. Symbols follow Yahoo Finance conventions (`GC=F`, `EURUSD=X`).
+- **Terminal interface** — candlestick chart with SMA20/50 overlays, RSI and
+  volume panels, volatility projection cone, live quote tape, per-symbol
+  health and risk scoring, and a plain-language analyst summary.
+- **Consensus execution** — decision agents ("brains") vote independently;
+  the engine acts only when `REQUIRED_AGREEMENT` agents concur. Agent
+  failures degrade to HOLD — a faulty API can never force a trade.
+- **Pluggable decision agents** — deterministic rule-based agents (momentum,
+  mean-reversion) run offline by default; Anthropic, Kimi, DeepSeek, or any
+  OpenAI-compatible endpoint can be configured per agent.
+- **Risk management** — per-position cap (15% of equity), daily-loss
+  kill-switch (−3% halts trading), per-symbol cooldowns, and a minimum
+  confidence floor.
+- **Economic calendar** — this week's macro releases with impact rating,
+  forecast, and prior values (sourced from the free Forex Factory weekly
+  feed; deterministic offline fallback).
+- **Backtesting** — one-click rule strategy vs. buy-and-hold per symbol:
+  returns, win rate, trade count, max drawdown, and equity curves.
+- **Deliberation log** — every agent vote and risk decision is streamed to
+  the UI over WebSocket in real time.
+
+## Quick start
+
+Runs fully offline by default with deterministic demo market data — no API
+keys or internet connection required.
+
+```powershell
+python -m venv .venv          # one-time: isolated environment
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-./run.sh                      # or: uvicorn backend.main:app --port 8000
-# open http://localhost:8000 and press ▶ START THE BOT
+.\run.bat                     # or: .\run.ps1, or: uvicorn backend.main:app --port 8000
 ```
 
-Out of the box it uses deterministic demo market data and two rule-based
-brains (a momentum trader and a mean-reversion contrarian), so the entire
-experience — live bot log, debates, trades, P/L, backtests — works with no
-API keys and no internet.
+Open http://localhost:8000 and press START AUTO-TRADER.
 
-## What's in the box
+`run.bat` is a double-clickable wrapper around `run.ps1`, which loads `.env`
+(if present), locates the project venv, and starts the server. On
+Linux/macOS use `./run.sh`.
 
-- **Terminal UI** — watchlist, candlestick chart with SMA20/50, RSI panel,
-  volume, a volatility **forecast cone**, live ticker tape, plain-English
-  analysis ("Bottom line: INTC is a very volatile stock in an uptrend…"),
-  health & risk scores.
-- **AI AUTO-TRADER** — start/stop bot that round-robins the watchlist;
-  every deliberation is streamed to the **live bot log** over WebSocket:
-  `Kimi BUY · DeepSeek BUY AMD → AGREED, acting ✓`
-  `Two brains found no agreement — holding steady.`
-- **Dual-AI consensus** — plug in real LLM brains (Kimi, DeepSeek, Claude,
-  any OpenAI-compatible endpoint) via env vars; trades happen only when
-  `REQUIRED_AGREEMENT` brains independently pick the same action. A flaky
-  API degrades to HOLD — it can never force a trade.
-- **Risk manager (the upgrade the original lacked)** — per-position cap
-  (15% of equity), daily-loss kill-switch (-3% halts the bot), per-symbol
-  cooldowns, minimum-confidence floor.
-- **Backtester** — one click per symbol: rule strategy vs buy & hold,
-  win rate, trade count, max drawdown, equity curves.
-- **Paper-first safety** — paper trading is the default and the only mode
-  that runs without deliberate opt-in (see below).
+## Configuration
 
-## Using real LLM brains
+All settings are environment variables (or entries in `.env` — see
+`.env.example` for the full annotated reference).
 
-```bash
-export MOONSHOT_API_KEY=...    # Kimi
-export DEEPSEEK_API_KEY=...
-export BRAINS=kimi:,deepseek:
-./run.sh
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DATA_PROVIDER` | `mock` | `mock` (offline demo) or `yfinance` (real daily candles; `pip install yfinance`) |
+| `WATCHLIST_STOCKS` | curated list | Equities tab (comma-separated Yahoo symbols) |
+| `WATCHLIST_COMMODITIES` | `GC=F,SI=F,CL=F,NG=F,HG=F` | Commodities tab (futures, `=F`) |
+| `WATCHLIST_FOREX` | `EURUSD=X,…,USDMYR=X` | FX tab (pairs, `=X`) |
+| `BRAINS` | `rule:momentum,rule:meanrev` | Decision agents (see below) |
+| `REQUIRED_AGREEMENT` | `2` | Votes required before the engine acts |
+| `STARTING_CASH` | `10000` | Paper account opening balance |
+| `MAX_POSITION_PCT` | `0.15` | Max share of equity per position |
+| `MAX_DAILY_LOSS_PCT` | `0.03` | Daily drawdown kill-switch |
+| `TRADE_COOLDOWN_SEC` | `120` | Minimum interval between trades per symbol |
+| `MIN_CONFIDENCE` | `0.6` | Confidence floor for any execution |
+
+### Decision agents
+
+```powershell
+$env:MOONSHOT_API_KEY = "..."    # Kimi
+$env:DEEPSEEK_API_KEY = "..."
+$env:BRAINS = "kimi:,deepseek:"
+.\run.ps1
 ```
 
-Any mix works: `BRAINS=anthropic:claude-haiku-4-5-20251001,kimi:` or
-`BRAINS=openai-compat:https://api.openai.com/v1|gpt-4o-mini,rule:momentum`.
+Supported specs: `rule:momentum`, `rule:meanrev`,
+`anthropic:<model>` (requires `ANTHROPIC_API_KEY`), `kimi:<model>`,
+`deepseek:<model>`, and `openai-compat:<base_url>|<model>` (requires
+`OPENAI_API_KEY`). Any mix is valid.
 
-## Real market data
+## Live trading
 
-```bash
-pip install yfinance
-export DATA_PROVIDER=yfinance
-```
+The platform defaults to paper trading and will not place real orders
+unless all of the following hold:
 
-## Live trading (read this first)
-
-This project **defaults to paper trading and stays there**. The moomoo
-adapter (`backend/broker.py`) only activates when *all* of these are true:
-
-1. `pip install moomoo-api` and a running [moomoo OpenD](https://openapi.moomoo.com/) gateway,
-2. `LIVE_TRADING_ENABLED=true`,
+1. `moomoo-api` is installed and a [moomoo OpenD](https://openapi.moomoo.com/) gateway is running;
+2. `LIVE_TRADING_ENABLED=true`;
 3. `LIVE_TRADING_CONFIRM=I-UNDERSTAND-REAL-MONEY`.
 
-Even then: validate the strategy on paper for weeks first. **This is an
-educational project, not financial advice. AI brains confidently make
-mistakes; markets take real money from confident mistakes.**
+Validate any strategy on paper over an extended period before considering
+live execution. This software is provided for research and education; it is
+not financial advice, and automated strategies can lose real money.
 
 ## Tests
 
@@ -92,18 +117,20 @@ mistakes; markets take real money from confident mistakes.**
 pytest
 ```
 
-## Layout
+## Project layout
 
 ```
 backend/
-  config.py      # env-driven settings, safe defaults
+  config.py      # env-driven settings; per-asset-class watchlists
   market.py      # data providers: mock (offline) + yfinance
   indicators.py  # SMA/EMA/RSI/MACD/ATR/vol/drawdown — pure Python
-  agents.py      # researcher, analyst, brains, consensus, risk manager
+  agents.py      # researcher, analyst, decision agents, consensus, risk
+  econcal.py     # economic calendar: weekly feed + offline fallback
   broker.py      # paper broker + (gated) moomoo live adapter
   bot.py         # orchestrator loop + websocket event bus
   backtest.py    # rule strategy vs buy & hold
   main.py        # FastAPI app: REST + WS + serves frontend
 frontend/        # zero-dependency vanilla JS terminal UI
 tests/           # pytest suite
+run.ps1 / run.bat / run.sh   # launchers (Windows / Unix)
 ```

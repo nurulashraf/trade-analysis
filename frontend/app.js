@@ -1,9 +1,17 @@
-/* SAHAM PRO++ frontend — no external libraries, custom canvas chart. */
+/* KONSENSUS frontend — no external libraries, custom canvas chart. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 2) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const pct = (n) => `${n >= 0 ? "▲" : "▼"}${Math.abs(n).toFixed(2)}%`;
+
+/* asset class by Yahoo suffix; display form: GC=F → GC, EURUSD=X → EUR/USD */
+const assetClass = (s) => (s.endsWith("=F") ? "commodities" : s.endsWith("=X") ? "forex" : "stocks");
+const dispSym = (s) => {
+  if (s.endsWith("=F")) return s.slice(0, -2);
+  if (s.endsWith("=X")) { const p = s.slice(0, -2); return p.length === 6 ? `${p.slice(0, 3)}/${p.slice(3)}` : p; }
+  return s;
+};
 
 const state = {
   config: null,
@@ -14,6 +22,7 @@ const state = {
   days: 66,
   botRunning: false,
   portfolio: null,
+  tab: "stocks",
 };
 
 /* ------------------------------------------------------------------ clock */
@@ -30,6 +39,7 @@ async function api(path, opts) {
 
 async function loadConfig() {
   state.config = await api("/api/config");
+  $("data-src").textContent = (state.config.provider || "DATA").toUpperCase();
   $("brains-line").innerHTML =
     `Brain: <b>${state.config.brains.join(" + ")}</b> — independent brains each read the charts AND the news; the bot only trades when <b>${state.config.required_agreement} agree</b>.`;
   $("badge-brains").textContent = `${state.config.brains.length} AI`;
@@ -53,14 +63,14 @@ function updateMood() {
   const ups = state.watchlist.filter((w) => w.change_pct >= 0).length;
   const total = state.watchlist.length;
   const el = $("mood");
-  el.textContent = `Mood: ${ups >= total / 2 ? "Risk-on" : "Risk-off"} · ${ups}/${total} up`;
+  el.textContent = `Breadth ${ups}/${total} · ${ups >= total / 2 ? "Risk-on" : "Risk-off"}`;
   el.style.color = ups >= total / 2 ? "var(--green)" : "var(--red)";
 }
 
 async function selectSymbol(sym) {
   state.symbol = sym;
   renderWatchlist();
-  $("chart-title").textContent = `${sym} · ${state.config?.names?.[sym] || sym}`;
+  $("chart-title").textContent = `${dispSym(sym)} · ${state.config?.names?.[sym] || sym}`;
   const [candles, analysis] = await Promise.all([
     api(`/api/candles/${encodeURIComponent(sym)}?days=400`),
     api(`/api/analysis/${encodeURIComponent(sym)}`),
@@ -77,11 +87,12 @@ async function selectSymbol(sym) {
 function renderWatchlist() {
   const box = $("watchlist");
   box.innerHTML = "";
-  for (const w of state.watchlist) {
+  const rows = state.watchlist.filter((w) => (w.asset_class || assetClass(w.symbol)) === state.tab);
+  for (const w of rows) {
     const row = document.createElement("div");
     row.className = "wl-row" + (w.symbol === state.symbol ? " active" : "");
     const cls = w.change_pct >= 0 ? "up" : "down";
-    row.innerHTML = `<div><div class="wl-sym"><i style="background:${w.change_pct >= 0 ? "var(--green)" : "var(--red)"}"></i>${w.symbol}</div>
+    row.innerHTML = `<div><div class="wl-sym"><i style="background:${w.change_pct >= 0 ? "var(--green)" : "var(--red)"}"></i>${dispSym(w.symbol)}</div>
       <div class="wl-price">${fmt(w.price, w.price < 10 ? 4 : 2)}</div></div>
       <div class="${cls}">${w.change_pct >= 0 ? "+" : ""}${w.change_pct.toFixed(2)}%</div>`;
     row.onclick = () => selectSymbol(w.symbol);
@@ -91,16 +102,24 @@ function renderWatchlist() {
 
 function renderTape() {
   const parts = state.watchlist.map(
-    (w) => `<span><b>${w.symbol}</b> ${fmt(w.price, 2)} <span class="${w.change_pct >= 0 ? "up" : "down"}">${pct(w.change_pct)}</span></span>`
+    (w) => `<span><b>${dispSym(w.symbol)}</b> ${fmt(w.price, w.price < 10 ? 4 : 2)} <span class="${w.change_pct >= 0 ? "up" : "down"}">${pct(w.change_pct)}</span></span>`
   );
-  $("tape-inner").innerHTML = parts.join("") + parts.join(""); // doubled for seamless loop
+  const el = $("tape-inner");
+  el.innerHTML = parts.join("") + parts.join(""); // doubled for seamless loop
+  // Constant speed (~45 px/s) no matter how many symbols are on the tape.
+  const dur = Math.max(el.scrollWidth / 2 / 45, 20);
+  el.style.animationDuration = `${dur}s`;
+  // Quotes refresh every 8s and rebuilding the tape restarts the CSS
+  // animation — resume from where the loop would be instead of snapping back.
+  renderTape.t0 ??= Date.now();
+  el.style.animationDelay = `-${((Date.now() - renderTape.t0) / 1000) % dur}s`;
 }
 
 function renderTopQuote() {
   const a = state.analysis?.analysis;
   if (!a) return;
-  $("top-symbol").textContent = a.symbol;
-  $("top-price").textContent = fmt(a.price);
+  $("top-symbol").textContent = dispSym(a.symbol);
+  $("top-price").textContent = fmt(a.price, a.price < 10 ? 4 : 2);
   const el = $("top-change");
   el.textContent = `${a.change_pct >= 0 ? "+" : ""}${a.change_pct.toFixed(2)}%`;
   el.className = a.change_pct >= 0 ? "up" : "down";
@@ -110,15 +129,19 @@ function renderStats() {
   const a = state.analysis?.analysis;
   if (!a) return;
   const last = state.candles[state.candles.length - 1] || {};
+  const cls = assetClass(a.symbol);
+  const d = a.price < 10 ? 4 : 2;
+  const unit = cls === "forex" ? dispSym(a.symbol).slice(-3) : "USD";
+  const vol = last.volume ?? 0;
   const rows = [
-    ["Price", `${fmt(a.price)} USD`],
+    ["Price", `${fmt(a.price, d)} ${unit}`],
     ["Change", `<span class="${a.change_pct >= 0 ? "up" : "down"}">${a.change_pct >= 0 ? "+" : ""}${a.change_pct.toFixed(2)}%</span>`],
-    ["Open", fmt(last.open ?? 0)],
-    ["High", fmt(last.high ?? 0)],
-    ["Low", fmt(last.low ?? 0)],
-    ["Volume", `${fmt((last.volume ?? 0) / 1e6, 1)}M`],
-    ["52W High", fmt(a.high_52w)],
-    ["52W Low", fmt(a.low_52w)],
+    ["Open", fmt(last.open ?? 0, d)],
+    ["High", fmt(last.high ?? 0, d)],
+    ["Low", fmt(last.low ?? 0, d)],
+    ["Volume", vol >= 1e6 ? `${fmt(vol / 1e6, 1)}M` : vol > 0 ? `${fmt(vol / 1e3, 0)}K` : "—"],
+    ["52W High", fmt(a.high_52w, d)],
+    ["52W Low", fmt(a.low_52w, d)],
     ["RSI(14)", a.rsi14 == null ? "—" : Math.round(a.rsi14)],
     ["Ann. vol", `${Math.round(a.ann_vol * 100)}%`],
   ];
@@ -130,8 +153,9 @@ function renderPlainEnglish() {
   if (!a) return;
   const dir = a.trend === "up" ? "an uptrend" : a.trend === "down" ? "a downtrend" : "a sideways range";
   const nearHigh = a.price > a.high_52w * 0.95 ? ", near its 1-year high" : "";
-  const wild = a.ann_vol > 0.55 ? "a very volatile stock" : a.ann_vol > 0.3 ? "a moderately volatile stock" : "a steady stock";
-  $("bottom-line").innerHTML = `<b>Bottom line:</b> ${a.symbol} is ${wild} in ${dir}${nearHigh} — ${a.health >= 60 ? "in favour with buyers right now." : a.health >= 40 ? "the picture is mixed." : "out of favour right now."}`;
+  const noun = { stocks: "stock", commodities: "commodity", forex: "currency pair" }[assetClass(a.symbol)];
+  const wild = a.ann_vol > 0.55 ? `a very volatile ${noun}` : a.ann_vol > 0.3 ? `a moderately volatile ${noun}` : `a steady ${noun}`;
+  $("bottom-line").innerHTML = `<b>Bottom line:</b> ${dispSym(a.symbol)} is ${wild} in ${dir}${nearHigh} — ${a.health >= 60 ? "in favour with buyers right now." : a.health >= 40 ? "the picture is mixed." : "out of favour right now."}`;
   const h = $("health");
   h.textContent = a.health;
   h.style.color = a.health >= 60 ? "var(--green)" : a.health >= 40 ? "var(--gold)" : "var(--red)";
@@ -223,8 +247,8 @@ function drawChart() {
     }
   });
 
-  /* volume bars */
-  const maxV = Math.max(...data.map((c) => c.volume));
+  /* volume bars (forex has no volume — guard against divide-by-zero) */
+  const maxV = Math.max(...data.map((c) => c.volume), 1);
   data.forEach((c, i) => {
     ctx.fillStyle = c.close >= c.open ? "rgba(47,213,135,0.45)" : "rgba(244,83,110,0.45)";
     const h = (c.volume / maxV) * (volH - 6);
@@ -319,6 +343,41 @@ function rsiSeries(values, period) {
   return out;
 }
 
+/* ------------------------------------------------------- economic calendar */
+async function loadCalendar() {
+  let cal;
+  try { cal = await api("/api/calendar"); } catch { return; }
+  $("cal-src").textContent = cal.source === "mock" ? "DEMO" : "LIVE";
+  $("cal-src").className = `chip ${cal.source === "mock" ? "" : "blue"}`;
+  const now = Date.now() / 1000;
+  // upcoming events only (keep ones from the last hour so "just released" stays visible)
+  const events = cal.events.filter((e) => e.ts > now - 3600).slice(0, 20);
+  const dayName = (ts) => {
+    const d = new Date(ts * 1000), today = new Date();
+    const tomorrow = new Date(today.getTime() + 86400000);
+    if (d.toDateString() === today.toDateString()) return "TODAY";
+    if (d.toDateString() === tomorrow.toDateString()) return "TOMORROW";
+    return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }).toUpperCase();
+  };
+  let html = "", lastDay = "";
+  for (const e of events) {
+    const day = dayName(e.ts);
+    if (day !== lastDay) { html += `<div class="cal-day">${day}</div>`; lastDay = day; }
+    const t = e.all_day ? "All day" : new Date(e.ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const soon = !e.all_day && e.ts > now && e.ts - now < 7200 && e.impact === "High" ? " soon" : "";
+    const fc = e.forecast ? `F ${e.forecast}` : "";
+    const pv = e.previous ? ` · P ${e.previous}` : "";
+    html += `<div class="cal-row${soon}">
+      <span class="cal-time">${t}</span>
+      <span class="cal-imp imp-${(e.impact || "none").toLowerCase()}"></span>
+      <span class="cal-ccy">${e.currency}</span>
+      <span class="cal-title" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>
+      <span class="cal-fc">${fc}${pv}</span>
+    </div>`;
+  }
+  $("calendar").innerHTML = html || `<div class="muted small">No upcoming events this week.</div>`;
+}
+
 /* -------------------------------------------------------------- bot wiring */
 async function toggleBot() {
   const status = await api(`/api/bot/${state.botRunning ? "stop" : "start"}`, { method: "POST" });
@@ -328,7 +387,7 @@ async function toggleBot() {
 function setBotState(running) {
   state.botRunning = running;
   const btn = $("btn-bot");
-  btn.textContent = running ? "■ STOP THE BOT" : "▶ START THE BOT";
+  btn.textContent = running ? "STOP AUTO-TRADER" : "START AUTO-TRADER";
   btn.className = `bot-btn ${running ? "stop" : "start"}`;
   $("bot-live").textContent = running ? "LIVE" : "OFF";
   $("bot-live").className = `live-pill ${running ? "on" : "off"}`;
@@ -343,12 +402,12 @@ function renderPortfolio(p) {
   const pl = p.realized_pnl + p.unrealized_pnl;
   for (const id of ["bot-pl", "footer-pl"]) {
     const el = $(id);
-    el.textContent = `${pl >= 0 ? "+" : "-"}$${fmt(Math.abs(pl), 4)}`;
+    el.textContent = `${pl >= 0 ? "+" : "-"}$${fmt(Math.abs(pl), 2)}`;
     el.classList.toggle("neg", pl < 0);
   }
-  $("holding").textContent = `${p.positions.length} stocks`;
+  $("holding").textContent = `${p.positions.length}`;
   $("trade-count").textContent = `${p.trades.length} trades`;
-  $("held-symbols").textContent = p.positions.map((x) => x.symbol).join(" · ");
+  $("held-symbols").textContent = p.positions.map((x) => dispSym(x.symbol)).join(" · ");
 }
 
 function addLog(ev) {
@@ -381,7 +440,7 @@ function connectWS() {
 async function openBacktest() {
   if (!state.symbol) return;
   const bt = await api(`/api/backtest/${encodeURIComponent(state.symbol)}`, { method: "POST" });
-  $("bt-symbol").textContent = bt.symbol;
+  $("bt-symbol").textContent = dispSym(bt.symbol);
   $("bt-note").textContent = bt.note;
   const stats = [
     [`${(bt.strategy_return * 100).toFixed(0)}%`, "Strategy", bt.strategy_return >= 0 ? "var(--green)" : "var(--red)"],
@@ -396,8 +455,8 @@ async function openBacktest() {
   const edge = bt.edge;
   $("bt-verdict").textContent =
     edge >= 0
-      ? `✅ The rule strategy beat buy-and-hold by ${(edge * 100).toFixed(0)}% over this window.`
-      : `❌ The rule strategy lagged buy-and-hold by ${(-edge * 100).toFixed(0)}% over this window.`;
+      ? `The rule strategy beat buy-and-hold by ${(edge * 100).toFixed(0)}% over this window.`
+      : `The rule strategy lagged buy-and-hold by ${(-edge * 100).toFixed(0)}% over this window.`;
   $("bt-verdict").style.color = edge >= 0 ? "var(--green)" : "var(--red)";
   drawBacktest(bt.equity_curve);
   $("modal").classList.remove("hidden");
@@ -445,10 +504,23 @@ async function init() {
   const status = await api("/api/bot/status");
   setBotState(status.running);
   renderPortfolio(await api("/api/portfolio"));
+  loadCalendar();
+  setInterval(loadCalendar, 30 * 60 * 1000); // calendar refreshes half-hourly
   connectWS();
 
   $("btn-bot").onclick = toggleBot;
   $("btn-backtest").onclick = openBacktest;
+  document.querySelectorAll(".wl-tab").forEach((b) => {
+    b.onclick = () => {
+      document.querySelectorAll(".wl-tab").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      state.tab = b.dataset.class;
+      renderWatchlist();
+      // jump the chart to the first symbol of the tab if the current one doesn't belong
+      const first = state.watchlist.find((w) => (w.asset_class || assetClass(w.symbol)) === state.tab);
+      if (first && (!state.symbol || assetClass(state.symbol) !== state.tab)) selectSymbol(first.symbol);
+    };
+  });
   $("modal-close").onclick = () => $("modal").classList.add("hidden");
   $("modal").onclick = (e) => { if (e.target === $("modal")) $("modal").classList.add("hidden"); };
   document.querySelectorAll(".tf[data-days]").forEach((b) => {

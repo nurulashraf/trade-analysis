@@ -41,6 +41,7 @@ body {
 /* ---------- ticker tape ---------- */
 #tape { overflow: hidden; border-bottom: 1px solid var(--border); background: var(--panel); white-space: nowrap; }
 #tape-inner { display: inline-block; padding: 5px 0; animation: scroll 60s linear infinite; }
+#tape:hover #tape-inner { animation-play-state: paused; }
 #tape-inner span { margin: 0 16px; color: var(--muted); }
 #tape-inner b { color: var(--text); font-weight: 600; }
 @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -54,6 +55,14 @@ body {
 .chip { background: var(--panel2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; font-size: 9px; color: var(--muted); }
 .chip.gold { color: var(--gold); border-color: #423a1f; }
 .chip.blue { color: var(--blue); border-color: #1f2c4d; }
+#wl-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.wl-tab {
+  flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font-family: var(--mono); font-size: 9px; letter-spacing: 1px;
+  padding: 6px 0 7px; cursor: pointer;
+}
+.wl-tab:hover { color: var(--text); }
+.wl-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
 .wl-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 12px; cursor: pointer; border-left: 2px solid transparent; }
 .wl-row:hover { background: var(--panel2); }
 .wl-row.active { background: var(--panel2); border-left-color: var(--gold); }
@@ -62,6 +71,21 @@ body {
 .wl-price { color: var(--muted); font-size: 10px; }
 .up { color: var(--green); }
 .down { color: var(--red); }
+
+/* ---------- economic calendar ---------- */
+.cal { max-height: 220px; overflow-y: auto; }
+.cal-day { color: var(--muted); font-size: 9px; letter-spacing: 1px; padding: 6px 0 3px; border-bottom: 1px solid var(--border); }
+.cal-row { display: grid; grid-template-columns: 44px 14px 34px 1fr auto; gap: 4px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #11151f; }
+.cal-time { color: var(--muted); font-size: 10px; }
+.cal-row.soon .cal-time { color: var(--gold); }
+.cal-imp { width: 7px; height: 7px; border-radius: 2px; align-self: center; }
+.imp-high { background: var(--red); }
+.imp-medium { background: #e08a3c; }
+.imp-low { background: var(--gold); }
+.imp-holiday, .imp-none { background: var(--muted); }
+.cal-ccy { font-weight: 700; font-size: 10px; }
+.cal-title { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-fc { color: var(--muted); font-size: 9px; text-align: right; }
 
 /* ---------- chart ---------- */
 #chart-pane { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }

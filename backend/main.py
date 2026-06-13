@@ -1,4 +1,4 @@
-"""SAHAM PRO++ — FastAPI app: REST + WebSocket + static frontend.
+"""KONSENSUS — FastAPI app: REST + WebSocket + static frontend.
 
 Run:  uvicorn backend.main:app --reload --port 8000
 """
@@ -15,10 +15,11 @@ from .agents import Analyst, Researcher
 from .backtest import run_backtest
 from .bot import EventBus, TradingBot
 from .broker import PaperBroker
-from .config import COMPANY_NAMES, settings
+from .config import COMPANY_NAMES, asset_class, settings
+from .econcal import get_calendar
 from .market import make_provider
 
-app = FastAPI(title="SAHAM PRO++", version="1.0")
+app = FastAPI(title="KONSENSUS", version="1.0")
 
 provider = make_provider(settings.data_provider)
 bus = EventBus()
@@ -35,6 +36,7 @@ FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 def get_config():
     return {
         "watchlist": settings.watchlist,
+        "watchlists": settings.watchlists,
         "names": COMPANY_NAMES,
         "provider": provider.name,
         "mode": "LIVE" if settings.live_armed else "paper",
@@ -54,6 +56,7 @@ def get_watchlist():
         out.append({
             "symbol": sym,
             "name": COMPANY_NAMES.get(sym, sym),
+            "asset_class": asset_class(sym),
             "price": last,
             "change_pct": round((last / prev - 1) * 100, 2) if prev else 0.0,
         })
@@ -81,6 +84,11 @@ def get_analysis(symbol: str):
         "research": research.as_dict(),
         "last_verdict": bot.last_verdicts.get(symbol),
     }
+
+
+@app.get("/api/calendar")
+def calendar():
+    return get_calendar()
 
 
 @app.get("/api/portfolio")
